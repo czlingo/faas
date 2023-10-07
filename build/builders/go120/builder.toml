@@ -1,0 +1,12 @@
+[[buildpacks]]
+uri = "../../buildpacks/go120"
+
+[[order]]
+[[order.group]]
+id = "faas/go120"
+version = "0.0.1"
+
+[stack]
+id = "faas.czlingo.buildpacks.stacks"
+build-image = "faas-czlingo-go-build:jammy"
+run-image = "faas-czlingo-go-run:jammy"

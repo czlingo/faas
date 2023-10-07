@@ -1,0 +1,7 @@
+## Append samples of your project ##
+resources:
+- faas_v1alpha1_function.yaml
+- faas_v1alpha1_serving.yaml
+- faas_v1alpha1_building.yaml
+- faas_v1alpha1_buildstrategy.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples

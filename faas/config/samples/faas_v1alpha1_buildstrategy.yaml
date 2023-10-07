@@ -1,0 +1,12 @@
+apiVersion: faas.czlingo.io/v1alpha1
+kind: BuildStrategy
+metadata:
+  labels:
+    app.kubernetes.io/name: buildstrategy
+    app.kubernetes.io/instance: buildstrategy-sample
+    app.kubernetes.io/part-of: faas
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: faas
+  name: buildstrategy-sample
+spec:
+  # TODO(user): Add fields here

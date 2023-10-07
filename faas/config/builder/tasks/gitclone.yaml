@@ -1,0 +1,49 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: faas-git-clone
+spec:
+  params:
+    - name: REPO
+      type: string
+    - name: REVISION
+      type: string
+      default: main
+    - name: HOME
+      type: string
+      default: /root
+  workspaces:
+    - name: source
+      description: The folder contains the cloned repo files
+    - name: sshcredentials
+      description: ssh credentials
+  volumes:
+    - name: hosts
+      hostPath:
+        path: /etc/hosts
+    - name: credentials
+      hostPath:
+        path: /etc/ssl
+  steps:
+    - name: clone
+      image: bitnami/git
+      env:
+      - name: USER_HOME
+        value: $(params.HOME)
+      script: |
+        #!/usr/bin/env bash
+        cd $(workspaces.source.path)
+
+        if [ "$(workspaces.sshcredentials.bound)" == "true" ] ; then
+            cp -r $(workspaces.sshcredentials.path) "${USER_HOME}"/.ssh
+            chmod 700 "${USER_HOME}"/.ssh
+            chmod -R 400 "${USER_HOME}"/.ssh/*
+        fi
+
+        git clone $(params.REPO) -b $(params.REVISION) .
+      volumeMounts:
+        - name: credentials
+          mountPath: /etc/ssl
+        - name: hosts
+          mountPath: /etc/hosts
+

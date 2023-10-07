@@ -1,0 +1,110 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - faas.czlingo.io
+  resources:
+  - buildings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - faas.czlingo.io
+  resources:
+  - buildings/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - faas.czlingo.io
+  resources:
+  - buildings/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - faas.czlingo.io
+  resources:
+  - buildstrategies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - faas.czlingo.io
+  resources:
+  - buildstrategies/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - faas.czlingo.io
+  resources:
+  - buildstrategies/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - faas.czlingo.io
+  resources:
+  - functions
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - faas.czlingo.io
+  resources:
+  - functions/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - faas.czlingo.io
+  resources:
+  - functions/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - faas.czlingo.io
+  resources:
+  - servings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - faas.czlingo.io
+  resources:
+  - servings/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - faas.czlingo.io
+  resources:
+  - servings/status
+  verbs:
+  - get
+  - patch
+  - update

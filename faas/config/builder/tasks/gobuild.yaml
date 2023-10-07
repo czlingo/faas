@@ -1,0 +1,79 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: go-build
+spec:
+  params:
+    - name: subpath
+      type: string
+      description: The path to the dockerfile to build
+    - name: repo
+      type: string
+    - name: revision
+      type: string
+      default: main
+    - name: home
+      type: string
+      default: /root
+    - name: image
+      type: string
+    - name: version
+      type: string
+  workspaces:
+    - name: source
+      description: The folder contains the cloned repo files
+    - name: credentials
+      description: ssh credentials
+    - name: dockerconfig
+      description: docker credentials
+  volumes:
+    - name: docker-sock
+      hostPath:
+        path: /var/run/docker.sock
+    - name: hosts
+      hostPath:
+        path: /etc/hosts
+  steps:
+    - name: clone
+      image: bitnami/git
+      env:
+      - name: USER_HOME
+        value: $(params.home)
+      script: |
+        #!/usr/bin/env bash
+        cd $(workspaces.output.path)
+
+        if [ "$(workspaces.credentials.bound)" == "true" ] ; then
+            cp -r $(workspaces.credentials.path) "${USER_HOME}"/.ssh
+            chmod 700 "${USER_HOME}"/.ssh
+            chmod -R 400 "${USER_HOME}"/.ssh/*
+        fi
+
+        git clone $(params.repo) -b $(params.revision) .
+    - name: build
+      image: docker
+      env:
+      - name: USER_HOME
+        value: $(params.home)
+      script: |
+        #!/usr/bin/env sh
+
+        if [ "$(workspaces.dockerconfig.bound)" == "true" ] ; then
+            cp -r $(workspaces.dockerconfig.path) "${USER_HOME}"/.docker
+            chmod 700 "${USER_HOME}"/.docker
+            chmod -R 400 "${USER_HOME}"/.docker/*
+        fi
+        
+        path=$(workspaces.output.path)/$(params.subpath)
+        cd $path
+
+        docker build --rm -t $(params.image):$(params.version) .
+        docker push $(params.image):$(params.version)
+
+        # docker image rm $(params.image):$(params.version)
+      volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+        - name: hosts
+          mountPath: /etc/hosts
+

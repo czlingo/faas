@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+plan=$2
+
+# echo "requires = [{ language = \"go\", version = \"1.19\" }]" >> "$plan"
+exit 0

@@ -1,0 +1,74 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: faas-buildpacks-build-pipeline
+spec:
+  params:
+    - name: REPO
+      type: string
+      description: git URL to clone
+    - name: REVISION
+      type: string
+      description: git branch to build
+    - name: SUBPATH
+      type: string
+      description: subpath
+    - name: IMAGE
+      type: string
+      description: image URL to push
+    - name: BUILDER_IMAGE
+      type: string
+      description: buildpacks builder image
+    - name: RUN_IMAGE
+      type: string
+      description: buildpacks run image
+  workspaces:
+    - name: source-workspace # Directory where application source is located. (REQUIRED)
+    - name: cache-workspace # Directory where cache is stored (OPTIONAL)
+  tasks:
+    - name: fetch-repository # This task fetches a repository from github, using the `git-clone` task you installed
+      taskRef:
+        name: faas-git-clone
+      workspaces:
+        - name: source
+          workspace: source-workspace
+      params:
+        - name: REPO
+          value: "$(params.REPO)"
+        - name: REVISION
+          value: "$(params.REVISION)"
+    - name: buildpacks # This task uses the `buildpacks` task to build the application
+      taskRef:
+        name: faas-buildpacks-build
+      runAfter:
+        - fetch-repository
+      workspaces:
+        - name: source
+          workspace: source-workspace
+        - name: cache
+          workspace: cache-workspace
+      params:
+        - name: APP_IMAGE
+          value: "$(params.IMAGE)"
+        - name: SOURCE_SUBPATH
+          value: "$(params.SUBPATH)" # This is the path within the samples repo you want to build (OPTIONAL, default: "")
+        - name: BUILDER_IMAGE
+          value: "$(params.BUILDER_IMAGE)" # This is the builder we want the task to use (REQUIRED)
+        - name: RUN_IMAGE
+          value: "$(params.RUN_IMAGE)"
+#    - name: display-results
+#      runAfter:
+#        - buildpacks
+#      taskSpec:
+#        steps:
+#          - name: print
+#            image: docker.io/library/bash:5.1.4@sha256:b208215a4655538be652b2769d82e576bc4d0a2bb132144c060efc5be8c3f5d6
+#            script: |
+#              #!/usr/bin/env bash
+#              set -e
+#              echo "Digest of created app image: $(params.DIGEST)"              
+#        params:
+#          - name: DIGEST
+#      params:
+#        - name: DIGEST
+#          value: $(tasks.buildpacks.results.APP_IMAGE_DIGEST)

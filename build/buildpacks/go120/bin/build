@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+layers_dir="$1"
+env_dir="$2/env"
+plan_path="$3"
+
+echo "---> go1.20 buildpack"
+func="$layers_dir"/func
+mkdir -p "$func"
+
+go build -o $func/function main.go
+
+echo -e '[types]\nlaunch = true' > $layers_dir/func.toml
+
+cat > "$layers_dir/launch.toml" << EOL
+[[processes]]
+type = "web"
+command = "$func/function"
+EOL

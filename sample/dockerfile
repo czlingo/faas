@@ -1,0 +1,12 @@
+FROM golang AS builder
+
+WORKDIR /build
+COPY . .
+RUN go build -o sample cmd/main.go
+
+FROM ubuntu
+COPY --from=builder /build/sample sample
+
+EXPOSE 80
+
+ENTRYPOINT [ "./sample" ]
