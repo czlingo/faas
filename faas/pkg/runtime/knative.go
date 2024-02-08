@@ -17,28 +17,30 @@ import (
 type knativeRuntime struct {
 	client.Client
 	Scheme *runtime.Scheme
+	svc    *faasv1alpha1.Serving
 }
 
-func NewDefaultKnativeRuntime(client client.Client, scheme *runtime.Scheme) *knativeRuntime {
+func NewDefaultKnativeRuntime(client client.Client, scheme *runtime.Scheme, svc *faasv1alpha1.Serving) Interface {
 	return &knativeRuntime{
 		Client: client,
 		Scheme: scheme,
+		svc:    svc,
 	}
 }
 
-func (k *knativeRuntime) Serving(ctx context.Context, svc *faasv1alpha1.Serving) error {
+func (k *knativeRuntime) Serving(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
 	ks := &kservingv1.Service{}
-	err := k.Get(ctx, client.ObjectKey{Namespace: svc.Namespace, Name: svc.Name}, ks)
+	err := k.Get(ctx, client.ObjectKey{Namespace: k.svc.Namespace, Name: k.svc.Name}, ks)
 	if err == nil || !errors.IsNotFound(err) {
 		return err
 	}
 
 	ks = &kservingv1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: svc.Namespace,
-			Name:      svc.Name,
+			Namespace: k.svc.Namespace,
+			Name:      k.svc.Name,
 		},
 		Spec: kservingv1.ServiceSpec{
 			ConfigurationSpec: kservingv1.ConfigurationSpec{
@@ -47,7 +49,7 @@ func (k *knativeRuntime) Serving(ctx context.Context, svc *faasv1alpha1.Serving)
 						PodSpec: corev1.PodSpec{
 							Containers: []corev1.Container{
 								{
-									Image: *svc.Spec.Image,
+									Image: *k.svc.Spec.Image,
 									Ports: []corev1.ContainerPort{
 										{
 											ContainerPort: 80,
@@ -62,16 +64,16 @@ func (k *knativeRuntime) Serving(ctx context.Context, svc *faasv1alpha1.Serving)
 		},
 	}
 
-	svc.Status.State = &faasv1alpha1.State{
+	k.svc.Status.State = &faasv1alpha1.State{
 		Phase: faasv1alpha1.Running,
 	}
-	if err := k.Status().Update(ctx, svc); err != nil {
+	if err := k.Status().Update(ctx, k.svc); err != nil {
 		logger.Error(err, "Failed to update serving state")
 		return err
 	}
 
 	ks.SetOwnerReferences(nil)
-	if err := controllerutil.SetControllerReference(svc, ks, k.Scheme); err != nil {
+	if err := controllerutil.SetControllerReference(k.svc, ks, k.Scheme); err != nil {
 		logger.Error(err, "Failed to set controller reference")
 		return err
 	}
@@ -83,6 +85,12 @@ func (k *knativeRuntime) Serving(ctx context.Context, svc *faasv1alpha1.Serving)
 	return nil
 }
 
-func (k *knativeRuntime) Result() {
-	// TODO:
+func (k *knativeRuntime) Result(ctx context.Context) (*Result, error) {
+	ks := &kservingv1.Service{}
+	if err := k.Get(ctx, client.ObjectKeyFromObject(k.svc), ks); err != nil {
+		return nil, err
+	}
+	ks.IsReady()
+
+	return &Result{}, nil
 }

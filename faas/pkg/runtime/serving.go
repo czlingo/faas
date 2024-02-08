@@ -15,12 +15,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+type Result struct{}
+
 type Interface interface {
-	Serving(ctx context.Context, svc *faasv1alpha1.Serving) error
-	Result()
+	Serving(ctx context.Context) error
+	Result(ctx context.Context) (*Result, error)
 }
 
-type constructor func(client.Client, *runtime.Scheme) Interface
+type constructor func(client.Client, *runtime.Scheme, *faasv1alpha1.Serving) Interface
 
 type facotry struct {
 	d map[faasv1alpha1.Runtime]constructor
@@ -32,12 +34,12 @@ func newFactory() *facotry {
 	}
 }
 
-func (f *facotry) Get(runtime faasv1alpha1.Runtime, client client.Client, sheme *runtime.Scheme) Interface {
+func (f *facotry) Get(runtime faasv1alpha1.Runtime, client client.Client, sheme *runtime.Scheme, svc *faasv1alpha1.Serving) Interface {
 	construct := f.d[runtime]
 	if construct == nil {
 		return nil
 	}
-	return construct(client, sheme)
+	return construct(client, sheme, svc)
 }
 
 func (f *facotry) Register(runtime faasv1alpha1.Runtime, construct constructor) {
@@ -49,49 +51,47 @@ var ServeFactory *facotry
 func init() {
 	ServeFactory = newFactory()
 
-	ServeFactory.Register(faasv1alpha1.DefaultRuntime, func(c client.Client, s *runtime.Scheme) Interface {
-		return NewDefaultRuntime(c, s)
-	})
-	ServeFactory.Register(faasv1alpha1.KnativeRuntime, func(c client.Client, s *runtime.Scheme) Interface {
-		return NewDefaultKnativeRuntime(c, s)
-	})
+	ServeFactory.Register(faasv1alpha1.DefaultRuntime, NewDefaultRuntime)
+	ServeFactory.Register(faasv1alpha1.KnativeRuntime, NewDefaultKnativeRuntime)
 }
 
 type defaultRuntime struct {
 	client.Client
 	Scheme *runtime.Scheme
+	svc    *faasv1alpha1.Serving
 }
 
-func NewDefaultRuntime(client client.Client, scheme *runtime.Scheme) *defaultRuntime {
+func NewDefaultRuntime(client client.Client, scheme *runtime.Scheme, svc *faasv1alpha1.Serving) Interface {
 	return &defaultRuntime{
 		Client: client,
 		Scheme: scheme,
+		svc:    svc,
 	}
 }
 
-func (d *defaultRuntime) Serving(ctx context.Context, svc *faasv1alpha1.Serving) error {
+func (d *defaultRuntime) Serving(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
 	var defaultReplicas int32 = 1
 
 	labels := map[string]string{
-		"fn-svc-pod": svc.Namespace + "-" + svc.Name,
+		"fn-svc-pod": d.svc.Namespace + "-" + d.svc.Name,
 	}
 
 	servingRun := &appsv1.Deployment{}
 	// FIXME: check serving state
 	// avoid repeat to create deployment
-	err := d.Client.Get(ctx, client.ObjectKey{Namespace: svc.Namespace, Name: svc.Name}, servingRun)
+	err := d.Client.Get(ctx, client.ObjectKey{Namespace: d.svc.Namespace, Name: d.svc.Name}, servingRun)
 	if err == nil || !errors.IsNotFound(err) {
 		return err
 	}
 
 	servingRun = &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: svc.Namespace,
-			Name:      svc.Name,
+			Namespace: d.svc.Namespace,
+			Name:      d.svc.Name,
 			Labels: map[string]string{
-				faasv1alpha1.LabelName: svc.Name,
+				faasv1alpha1.LabelName: d.svc.Name,
 			},
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -106,8 +106,8 @@ func (d *defaultRuntime) Serving(ctx context.Context, svc *faasv1alpha1.Serving)
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  svc.Name,
-							Image: *svc.Spec.Image,
+							Name:  d.svc.Name,
+							Image: *d.svc.Spec.Image,
 							Ports: []corev1.ContainerPort{
 								{
 									ContainerPort: 80,
@@ -117,7 +117,7 @@ func (d *defaultRuntime) Serving(ctx context.Context, svc *faasv1alpha1.Serving)
 					},
 					ImagePullSecrets: []corev1.LocalObjectReference{
 						{
-							Name: svc.Spec.ImageCredentials.Name,
+							Name: d.svc.Spec.ImageCredentials.Name,
 						},
 					},
 				},
@@ -125,16 +125,16 @@ func (d *defaultRuntime) Serving(ctx context.Context, svc *faasv1alpha1.Serving)
 		},
 	}
 
-	svc.Status.State = &faasv1alpha1.State{
+	d.svc.Status.State = &faasv1alpha1.State{
 		Phase: faasv1alpha1.Running,
 	}
-	if err := d.Status().Update(ctx, svc); err != nil {
+	if err := d.Status().Update(ctx, d.svc); err != nil {
 		logger.Error(err, "Failed to update serving state")
 		return err
 	}
 
 	servingRun.SetOwnerReferences(nil)
-	if err := controllerutil.SetControllerReference(svc, servingRun, d.Scheme); err != nil {
+	if err := controllerutil.SetControllerReference(d.svc, servingRun, d.Scheme); err != nil {
 		logger.Error(err, "Failed to set controller reference")
 		return err
 	}
@@ -146,8 +146,8 @@ func (d *defaultRuntime) Serving(ctx context.Context, svc *faasv1alpha1.Serving)
 
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: svc.Namespace,
-			Name:      svc.Name,
+			Namespace: d.svc.Namespace,
+			Name:      d.svc.Name,
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: labels,
@@ -162,7 +162,7 @@ func (d *defaultRuntime) Serving(ctx context.Context, svc *faasv1alpha1.Serving)
 	}
 
 	service.SetOwnerReferences(nil)
-	if err := controllerutil.SetControllerReference(svc, service, d.Scheme); err != nil {
+	if err := controllerutil.SetControllerReference(d.svc, service, d.Scheme); err != nil {
 		return err
 	}
 
@@ -173,6 +173,6 @@ func (d *defaultRuntime) Serving(ctx context.Context, svc *faasv1alpha1.Serving)
 	return nil
 }
 
-func (s *defaultRuntime) Result() {
-
+func (s *defaultRuntime) Result(ctx context.Context) (*Result, error) {
+	return nil, nil
 }

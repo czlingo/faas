@@ -22,8 +22,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	kservingv1 "knative.dev/serving/pkg/apis/serving/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	faasv1alpha1 "github.com/czlingo/faas/faas/api/v1alpha1"
 	svcruntime "github.com/czlingo/faas/faas/pkg/runtime"
@@ -58,12 +60,24 @@ func (r *ServingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, util.IgnoreNotFound(err)
 	}
 
-	serve := svcruntime.ServeFactory.Get(svc.Spec.Runtime, r.Client, r.Scheme)
-	if err := serve.Serving(ctx, svc); err != nil {
+	serve := svcruntime.ServeFactory.Get(svc.Spec.Runtime, r.Client, r.Scheme, svc)
+
+	if svc.Status.State != nil {
+		return ctrl.Result{}, r.updateStatus(ctx, svc, serve)
+	}
+
+	if err := serve.Serving(ctx); err != nil {
 		log.Error(err, "Failed to serving function")
 		return ctrl.Result{}, err
 	}
-	return ctrl.Result{}, nil
+
+	return ctrl.Result{}, r.updateStatus(ctx, svc, serve)
+}
+
+func (r *ServingReconciler) updateStatus(ctx context.Context, serving *faasv1alpha1.Serving, servingRun svcruntime.Interface) error {
+	servingRun.Result(ctx)
+
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -73,5 +87,10 @@ func (r *ServingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&faasv1alpha1.Serving{}).
+		Owns(&kservingv1.Service{},
+			builder.WithPredicates(predicate.NewPredicateFuncs(func(object client.Object) bool {
+				_, ok := object.GetAnnotations()[faasv1alpha1.LabelName]
+				return ok
+			}))).
 		Complete(r)
 }
